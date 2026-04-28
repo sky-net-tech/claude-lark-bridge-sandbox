@@ -3,6 +3,10 @@
 把 Claude Code + Lark Bot 跑在 Docker 容器內的完整部署流程。
 若你已熟悉本專案，跳到「[一鍵安裝](#一鍵安裝)」即可。
 
+> **實測狀態**：2026-04 在 macOS（Apple Silicon）+ Docker Desktop 驗證，
+> Lark 國際版（larksuite.com）websocket 連通；訂閱憑證 + GitHub PAT + Lark
+> internal app 三項組合一鍵 setup → up + healthcheck 全綠 → bot 在 Lark 可對話。
+
 ---
 
 ## 系統需求
@@ -161,6 +165,19 @@ Lark 回傳 `code != 0` 時：
 | 403 | account 無此模型權限 |
 | 429 | 限流 |
 
+### Phase 6：hermes build `npm install` 失敗
+
+實測常碰到的單點失敗（registry 連線不穩）：
+
+```
+npm ERR! code ERR_SOCKET_TIMEOUT
+npm ERR! network Socket timeout
+```
+
+`Dockerfile.hermes` 已設 `fetch-timeout=600000`、`fetch-retries=5` 緩解；
+若仍卡住，**直接重跑** `bash scripts/setup.sh`，BuildKit 會用 cache 跳過已完成 layer，
+通常第二、第三次就過。
+
 ### Phase 7：Healthcheck timeout
 
 ```bash
@@ -172,6 +189,18 @@ docker compose logs --tail 100 lark-mcp
 常見原因：
 - hermes 第一次啟動會跑 `git clone` + `npm/uv install`，可能超過 60s start_period。等 5 分鐘仍 timeout 就看 log
 - lark-mcp 在 Cold Start 會抓 npm 套件，網路慢會延遲
+
+### 執行期常見 WARN（可忽略）
+
+啟動後 `docker compose logs cc-connect` / `hermes` 會看到：
+
+| WARN 訊息 | 意義 | 是否需要處理 |
+|----------|------|------------|
+| `slow agent send elapsed=Xs` | cc-connect 偵測到 Claude session 回覆超過 5s | 偏慢但正常；複雜 prompt 或工具呼叫多時都會出現 |
+| `allow_from is not set — all users are permitted` | cc-connect 沒設使用者白名單 | 內部 / 測試環境可忽略；正式部署在 cc-runtime.toml 加 `allow_from = [...]` |
+| `admin_from is not set — privileged commands … are blocked` | `/shell`、`/restart` 等管理命令預設關閉 | 通常維持關閉即可，需要才開 |
+| `No user allowlists configured`（hermes 模式） | hermes 沒設 `FEISHU_ALLOWED_USERS` | 同上，正式環境建議設 |
+| `No messaging platforms enabled`（hermes 模式 cc-connect 路徑） | cc-connect 路徑下 hermes 不接 platform | **預期行為**，hermes 在背景跑 memory/cron |
 
 ### Claude 憑證過期
 

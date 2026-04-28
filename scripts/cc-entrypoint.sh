@@ -130,6 +130,20 @@ if [ -d "${WORKSPACE_DIR}/.git" ]; then
     GIT_TERMINAL_PROMPT=0 git -C "${WORKSPACE_DIR}" pull --ff-only 2>/dev/null || true
 fi
 
+# 從 target repo 的 lark-bot-directory.md 動態抽取允許名單
+# 規則：所有出現在該檔的 ou_ 算 allow_from；含 "admin" 或 "老闆" 字樣的列為 admin_from
+DIRECTORY="${WORKSPACE_DIR}/docs/zh/sop/admin/lark-bot-directory.md"
+if [ -f "$DIRECTORY" ]; then
+    ALLOW_LIST=$(grep -oE 'ou_[a-f0-9]+' "$DIRECTORY" | sort -u | paste -sd, -)
+    ADMIN_LIST=$(grep -E '(admin|老闆)' "$DIRECTORY" | grep -oE 'ou_[a-f0-9]+' | sort -u | paste -sd, -)
+    echo "[entrypoint] allow_from: ${ALLOW_LIST:-<空>}" >&2
+    echo "[entrypoint] admin_from: ${ADMIN_LIST:-<空>}" >&2
+else
+    ALLOW_LIST=""
+    ADMIN_LIST=""
+    echo "[entrypoint] WARN: directory file not found, allow_from will be empty (= deny all)" >&2
+fi
+
 # Generate runtime config from env vars (keeps secrets out of committed files)
 mkdir -p /data/cc-connect
 chown -R node:node /data/cc-connect 2>/dev/null || true
@@ -142,6 +156,7 @@ level = "info"
 
 [[projects]]
 name = "${PROJECT_SLUG}"
+admin_from = "${ADMIN_LIST}"
 
 [projects.agent]
 type = "claudecode"
@@ -158,6 +173,7 @@ app_id        = "${FEISHU_APP_ID}"
 app_secret    = "${FEISHU_APP_SECRET}"
 domain        = "${LARK_DOMAIN}"
 progress_style = "${CC_PROGRESS_STYLE}"
+allow_from    = "${ALLOW_LIST}"
 EOF
 
 # Run cc-connect as non-root user (claude refuses --dangerously-skip-permissions as root)

@@ -5,15 +5,16 @@ services:
       dockerfile: Dockerfile.hermes
       args:
         HERMES_REF: main
-    image: company-doc-hermes:latest
-    container_name: company-doc-hermes
     restart: unless-stopped
     environment:
       HERMES_HOME: /data/hermes
       HERMES_UID: "502"
       HERMES_GID: "20"
-      ANTHROPIC_API_KEY: ""
-      GH_TOKEN: "${GH_TOKEN}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      GIT_TOKEN: "${GIT_TOKEN}"
+      GIT_USERNAME: "${GIT_USERNAME:-oauth2}"
+      TARGET_REPO: "${TARGET_REPO}"
+      LARK_MCP_PORT: "${LARK_MCP_PORT:-3000}"
     volumes:
       - hermes-data:/data/hermes
       - workspace:/workspace
@@ -47,13 +48,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.lark-mcp
-    image: company-doc-lark-mcp:latest
-    container_name: company-doc-lark-mcp
     restart: unless-stopped
     env_file: .env
     environment:
       APP_ID: "${FEISHU_APP_ID}"
       APP_SECRET: "${FEISHU_APP_SECRET}"
+      LARK_DOMAIN: "${LARK_DOMAIN}"
+      LARK_MCP_PORT: "${LARK_MCP_PORT}"
+      LARK_MCP_TOOLS: "${LARK_MCP_TOOLS}"
+    # 預設不對 host 暴露；若要除錯，在 .env 設 LARK_MCP_HOST_PORT 並解除以下註解：
+    # ports:
+    #   - "${LARK_MCP_HOST_PORT}:${LARK_MCP_PORT}"
     networks:
       - bot-net
     security_opt:
@@ -66,7 +71,7 @@ services:
         max-size: "20m"
         max-file: "5"
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/mcp',r=>{process.exit(r.statusCode===405||r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:${LARK_MCP_PORT}/mcp',r=>{process.exit(r.statusCode===405||r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
       interval: 20s
       timeout: 5s
       retries: 10
@@ -76,8 +81,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.cc
-    image: company-doc-cc:latest
-    container_name: company-doc-cc
     restart: unless-stopped
     env_file: .env
     environment:

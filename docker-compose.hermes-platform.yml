@@ -1,0 +1,20 @@
+# Override file 給 hermes 模式使用：把 hermes 從「memory/cron 後援」升級成「Lark 直連 agent」。
+# 永遠透過 scripts/switch-platform.sh 啟用，不要手動 -f。
+#
+# 切到 hermes 模式：
+#   bash scripts/switch-platform.sh hermes
+# 切回 cc-connect 模式：
+#   bash scripts/switch-platform.sh cc-connect
+#
+# 限制：
+# - 同一個 Lark app 的 websocket 同時只能一個 client；hermes 與 cc-connect 不可並存
+# - hermes 不吃 Claude 訂閱憑證，必須有 ANTHROPIC_API_KEY
+# - LARK 國際版固定（FEISHU_DOMAIN=lark）；中國版部署需自行調整
+
+services:
+  hermes:
+    environment:
+      FEISHU_APP_ID: "${FEISHU_APP_ID}"
+      FEISHU_APP_SECRET: "${FEISHU_APP_SECRET}"
+      FEISHU_DOMAIN: lark
+      FEISHU_CONNECTION_MODE: websocket

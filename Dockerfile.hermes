@@ -55,7 +55,13 @@ COPY --from=hermes_src /src/web/package.json /src/web/package-lock.json web/
 COPY --from=hermes_src /src/ui-tui/package.json /src/ui-tui/package-lock.json ui-tui/
 COPY --from=hermes_src /src/ui-tui/packages/hermes-ink/package.json /src/ui-tui/packages/hermes-ink/package-lock.json ui-tui/packages/hermes-ink/
 
-RUN npm install --prefer-offline --no-audit && \
+# 拉長 npm 連線 timeout 與 retry 次數以對抗 registry 不穩
+# （實測在 hermes-agent 套件量大時會 ERR_SOCKET_TIMEOUT；2026-04 多次踩到）
+RUN npm config set fetch-timeout 600000 && \
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm install --prefer-offline --no-audit && \
     npx playwright install --with-deps chromium --only-shell && \
     (cd web && npm install --prefer-offline --no-audit) && \
     (cd ui-tui && npm install --prefer-offline --no-audit) && \

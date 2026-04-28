@@ -8,7 +8,7 @@ agent:
 
 terminal:
   backend: local
-  cwd: /workspace/company-doc
+  cwd: __WORKSPACE_DIR__
   shell_init_files: []
   persistent_shell: true
   timeout: 180
@@ -32,3 +32,10 @@ approvals:
 sessions:
   auto_prune: false
   retention_days: 90
+
+# 接 lark-mcp 容器（HTTP MCP）。在 cc-connect 模式下 hermes 雖然沒接 platform，
+# 仍可從 cron 任務透過此連線送 Lark 訊息；在 hermes 模式下此連線是必要的。
+mcp_servers:
+  lark:
+    url: http://lark-mcp:__LARK_MCP_PORT__/mcp
+    connect_timeout: 60

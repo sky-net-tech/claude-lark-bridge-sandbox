@@ -1,0 +1,14 @@
+.env
+.env.local
+.credentials.json
+*.credentials.json
+.git/
+.gitignore
+cc-connect-bin/
+data/
+volumes/
+*.log
+.DS_Store
+.idea/
+.vscode/
+README.md

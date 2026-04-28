@@ -1,8 +1,10 @@
 services:
   hermes:
     build:
-      context: /Users/ryan/.hermes/hermes-agent
-      dockerfile: /Users/skynet-admin/docker/company-doc-bot/Dockerfile.hermes
+      context: .
+      dockerfile: Dockerfile.hermes
+      args:
+        HERMES_REF: main
     image: company-doc-hermes:latest
     container_name: company-doc-hermes
     restart: unless-stopped

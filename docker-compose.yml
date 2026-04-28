@@ -85,6 +85,8 @@ services:
     env_file: .env
     environment:
       HERMES_HOME: /data/hermes
+      CC_ALLOW_FROM: "${CC_ALLOW_FROM:-}"
+      CC_ADMIN_FROM: "${CC_ADMIN_FROM:-}"
     volumes:
       - hermes-data:/data/hermes
       - workspace:/workspace

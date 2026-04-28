@@ -1,0 +1,119 @@
+services:
+  hermes:
+    build:
+      context: /Users/ryan/.hermes/hermes-agent
+      dockerfile: /Users/skynet-admin/docker/company-doc-bot/Dockerfile.hermes
+    image: company-doc-hermes:latest
+    container_name: company-doc-hermes
+    restart: unless-stopped
+    environment:
+      HERMES_HOME: /data/hermes
+      HERMES_UID: "502"
+      HERMES_GID: "20"
+      ANTHROPIC_API_KEY: ""
+      GH_TOKEN: "${GH_TOKEN}"
+    volumes:
+      - hermes-data:/data/hermes
+      - workspace:/workspace
+      - ./config/hermes-config.yaml:/config/hermes-config.yaml:ro
+      - ./scripts/hermes-entrypoint.sh:/scripts/hermes-entrypoint.sh:ro
+    networks:
+      - bot-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "grep -q 'Cron ticker started' /data/hermes/logs/gateway.log 2>/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  lark-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.lark-mcp
+    image: company-doc-lark-mcp:latest
+    container_name: company-doc-lark-mcp
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ID: "${FEISHU_APP_ID}"
+      APP_SECRET: "${FEISHU_APP_SECRET}"
+    networks:
+      - bot-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/mcp',r=>{process.exit(r.statusCode===405||r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+
+  cc-connect:
+    build:
+      context: .
+      dockerfile: Dockerfile.cc
+    image: company-doc-cc:latest
+    container_name: company-doc-cc
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HERMES_HOME: /data/hermes
+    volumes:
+      - hermes-data:/data/hermes
+      - workspace:/workspace
+      - cc-data:/data/cc-connect
+      - claude-data:/home/node/.claude
+    networks:
+      - bot-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    depends_on:
+      hermes:
+        condition: service_healthy
+      lark-mcp:
+        condition: service_healthy
+
+networks:
+  bot-net:
+    driver: bridge
+
+volumes:
+  hermes-data:
+  workspace:
+  cc-data:
+  claude-data:

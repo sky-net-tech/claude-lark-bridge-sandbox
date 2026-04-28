@@ -1,0 +1,17 @@
+# 機密
+.env
+.env.local
+.credentials.json
+*.credentials.json
+
+# 預編譯 binary / build artifact
+cc-connect-bin/
+
+# Docker volume / runtime data（如果有人不小心把 volume 內容拉到本機）
+data/
+volumes/
+
+# macOS / IDE
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,7 @@
+FROM node:20-slim
+
+RUN npm install -g @larksuiteoapi/lark-mcp
+
+CMD ["lark-mcp", "mcp", "-m", "streamable", "--host", "0.0.0.0", "-p", "3000", \
+     "-d", "https://open.larksuite.com", \
+     "-t", "preset.doc.default,minutes.v1.minute.get,im.v1.message.create,im.v1.chat.list,im.v1.chat.get,im.v1.chatMembers.get"]

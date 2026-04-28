@@ -1,0 +1,34 @@
+model:
+  default: claude-sonnet-4-6
+  provider: anthropic
+
+agent:
+  max_turns: 90
+  gateway_timeout: 1800
+
+terminal:
+  backend: local
+  cwd: /workspace/company-doc
+  shell_init_files: []
+  persistent_shell: true
+  timeout: 180
+
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+
+logging:
+  level: INFO
+  max_size_mb: 5
+  backup_count: 3
+
+toolsets:
+  - hermes-cli
+
+approvals:
+  mode: manual
+  cron_mode: deny
+
+sessions:
+  auto_prune: false
+  retention_days: 90

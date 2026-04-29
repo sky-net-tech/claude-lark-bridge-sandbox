@@ -116,8 +116,16 @@ cat > /tmp/mcp-config.json << EOF
 EOF
 chmod 644 /tmp/mcp-config.json
 
-# Set up system-wide git credential helper for HTTPS URLs so that root's `git pull`
-# and node-user `git push` (inside Claude sessions) both work without prompts.
+# Set up system-wide git credential helper for HTTPS URLs.
+#
+# 憑證放 ${CCUSER_HOME}/.git-credentials（不是 /etc）：
+#   1) cc-connect/Claude session 走 node user，需要能讀
+#   2) credential-store 的 approve 會原子重寫該檔；如果放 /etc，root 跑 git pull
+#      觸發 approve 之後檔案會變回 root:root 0600，下次 node 就讀不到
+#   3) credential-store 同時會在同目錄寫 .lock；/etc 不給 node 寫，會噴
+#      "unable to get credential storage lock"
+#
+# 放 node 家目錄 + chown node:node 0600：node 全權讀寫，root 仍可讀（root 例外）。
 setup_git_credentials() {
     case "$TARGET_REPO" in
         https://*|http://*)
@@ -127,9 +135,11 @@ setup_git_credentials() {
             rest="${rest##*@}"
             host="${rest%%/*}"
             user="${GIT_USERNAME:-oauth2}"
-            printf '%s://%s:%s@%s\n' "$proto" "$user" "$GIT_TOKEN" "$host" > /etc/git-credentials
-            chmod 644 /etc/git-credentials
-            git config --system credential.helper "store --file=/etc/git-credentials"
+            cred_path="${CCUSER_HOME}/.git-credentials"
+            printf '%s://%s:%s@%s\n' "$proto" "$user" "$GIT_TOKEN" "$host" > "$cred_path"
+            chown node:node "$cred_path"
+            chmod 600 "$cred_path"
+            git config --system credential.helper "store --file=${cred_path}"
             ;;
         *) ;;
     esac
@@ -143,9 +153,10 @@ git config --system --add safe.directory "${WORKSPACE_DIR}" 2>/dev/null || true
 # Give node user ownership of the workspace (hermes clones as its own uid)
 chown -R node:node "${WORKSPACE_DIR}" 2>/dev/null || true
 
-# Pull latest target repo (hermes container handles initial clone)
+# Pull latest target repo as node 身分（避免 root 跑 → credential-store approve 把
+# 憑證檔改回 root:root 而導致後續 node 讀不到）。hermes container 處理初次 clone。
 if [ -d "${WORKSPACE_DIR}/.git" ]; then
-    GIT_TERMINAL_PROMPT=0 git -C "${WORKSPACE_DIR}" pull --ff-only 2>/dev/null || true
+    su -s /bin/sh node -c "GIT_TERMINAL_PROMPT=0 git -C '${WORKSPACE_DIR}' pull --ff-only" 2>/dev/null || true
 fi
 
 # 白名單：直接從 env 讀，由部署者決定來源（手填 / 腳本生成 / 解析其他檔案）

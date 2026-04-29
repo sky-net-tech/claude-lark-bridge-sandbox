@@ -23,9 +23,27 @@ LARK_MCP_URL="http://lark-mcp:${LARK_MCP_PORT}/mcp"
 # Inject Claude credentials and settings for ccuser (non-root, required for --dangerously-skip-permissions)
 mkdir -p "${CCUSER_HOME}/.claude"
 
-if [ -n "$CLAUDE_CREDENTIALS_B64" ]; then
-    printf '%s' "$CLAUDE_CREDENTIALS_B64" | base64 -d > "${CCUSER_HOME}/.claude/.credentials.json"
-    chmod 600 "${CCUSER_HOME}/.claude/.credentials.json"
+# Credentials policy: claude-data volume is the source of truth.
+#  - 已存在：保留不動（裡面可能有 Claude 自己 refresh 過的新 token）
+#  - 不存在 + 提供 CLAUDE_CREDENTIALS_B64：一次性 seed（給「從舊架構升上來」或想自動化的人）
+#  - 不存在 + 沒 env var：容器照常啟動；訂閱版需要使用者手動 /login，bot 第一則訊息才會用到
+CRED_FILE="${CCUSER_HOME}/.claude/.credentials.json"
+if [ -f "$CRED_FILE" ]; then
+    echo "[cc-entrypoint] 使用 claude-data volume 內既有的 ${CRED_FILE}" >&2
+elif [ -n "${CLAUDE_CREDENTIALS_B64:-}" ]; then
+    printf '%s' "$CLAUDE_CREDENTIALS_B64" | base64 -d > "$CRED_FILE"
+    chmod 600 "$CRED_FILE"
+    echo "[cc-entrypoint] 從 CLAUDE_CREDENTIALS_B64 一次性 seed 進 volume" >&2
+elif [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    cat >&2 <<'CRED_HINT'
+[cc-entrypoint] WARN: 找不到 Claude 訂閱憑證、也沒設 ANTHROPIC_API_KEY
+[cc-entrypoint]       訂閱版請執行：
+[cc-entrypoint]         docker compose exec -it -u node cc-connect claude
+[cc-entrypoint]       進入 Claude 後輸入 /login，完成後：
+[cc-entrypoint]         docker compose restart cc-connect
+CRED_HINT
+else
+    echo "[cc-entrypoint] 沒訂閱憑證；使用 ANTHROPIC_API_KEY 認證" >&2
 fi
 
 cat > "${CCUSER_HOME}/.claude/settings.json" << EOF

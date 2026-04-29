@@ -28,18 +28,37 @@
 
 ### 1. Claude（擇一）
 
-**A. Claude 訂閱帳號（推薦）**
+**架構說明**：訂閱版的憑證以 `claude-data` volume 為唯一真相 — Claude 自己 refresh
+token 也會直接更新到 volume，**不會回灌 `.env`**。`CLAUDE_CREDENTIALS_B64` 只在
+volume 為空時做一次性 seed，之後 entrypoint 看到 volume 已有檔就放著不動。
 
-Host 上先 `claude login` 完成登入。`scripts/setup.sh` 會依序偵測：
+**A. Claude 訂閱帳號（推薦）— 容器內 `/login`**
 
-1. `~/.claude/.credentials.json`（Linux / 舊版 Claude Desktop）
-2. macOS Keychain 內 `Claude Code-credentials`（macOS Claude Desktop 預設儲存位置）
+setup.sh 互動填值時選「2) 什麼都不填」（預設）。部署完容器起來後：
 
-偵測到後自動 base64 並填入 `CLAUDE_CREDENTIALS_B64`。兩處都沒有則退回 API Key 或手動貼上。
+```sh
+docker compose exec -it -u node cc-connect claude
+# 進到 Claude 後輸入：/login
+# 螢幕會印出 https://claude.ai/oauth/authorize?... 與 paste 提示
+# 在 host 瀏覽器打開該 URL → 授權 → 拿到 code → 貼回 terminal
+docker compose restart cc-connect   # 讓 cc-connect 帶著新憑證重啟
+```
 
-**B. Anthropic API Key**
+之後 token 過期由 Claude 自己 refresh，volume 自動更新，不必再做任何事。
 
-到 <https://console.anthropic.com/settings/keys> 建立 API key，setup.sh 會問你是否使用此模式。
+**B. Claude 訂閱帳號 — host 端已 `claude login`**
+
+如果你的工作站已經登入過 Claude Code（Linux 在 `~/.claude/.credentials.json`、
+macOS 在 Keychain `Claude Code-credentials`），setup.sh 互動填值時選「1)」會自動
+偵測並 base64 後填進 `.env`，entrypoint 在 volume 為空時把它 seed 進去一次。
+
+> ⚠ host 端的 token 與 container 內的 token 之後會獨立 refresh，互不同步；
+> 想保持單一來源就走 A 路線。
+
+**C. Anthropic API Key**
+
+到 <https://console.anthropic.com/settings/keys> 建立 API key，setup.sh 互動選
+「3)」貼進去；不走訂閱。
 
 ### 2. Git Personal Access Token（依託管平台）
 
@@ -94,8 +113,8 @@ bash scripts/setup.sh
 
 | 變數 | 預設 | 必填 | 說明 |
 |------|------|------|------|
-| `CLAUDE_CREDENTIALS_B64` | — | 與下擇一 | 訂閱憑證 base64 |
-| `ANTHROPIC_API_KEY` | — | 與上擇一 | API Key（`sk-ant-...`） |
+| `CLAUDE_CREDENTIALS_B64` | — | 可全空 | 訂閱憑證 base64；只在 volume 為空時做一次性 seed。留空則部署完進 container `/login` |
+| `ANTHROPIC_API_KEY` | — | 可全空 | API Key（`sk-ant-...`）；不走訂閱時用。`CLAUDE_CREDENTIALS_B64` 與 volume 都空且這欄也空 → 必須手動 `/login` |
 | `GIT_TOKEN` | — | 私 repo 必填 | Git PAT；公 repo 可留空 |
 | `GIT_USERNAME` | `oauth2` |  | HTTPS basic-auth username；只有 `GIT_TOKEN` 非空時才生效 |
 | `FEISHU_APP_ID` | — | ✓ | Lark 應用 ID |
@@ -202,9 +221,18 @@ docker compose logs --tail 100 lark-mcp
 | `No user allowlists configured`（hermes 模式） | hermes 沒設 `FEISHU_ALLOWED_USERS` | 同上，正式環境建議設 |
 | `No messaging platforms enabled`（hermes 模式 cc-connect 路徑） | cc-connect 路徑下 hermes 不接 platform | **預期行為**，hermes 在背景跑 memory/cron |
 
-### Claude 憑證過期
+### Claude 憑證 — 換帳號 / 重登 / 過期
 
-訂閱憑證會過期（含 refresh token 失效）。Host 上重跑 `claude login`，再重跑 `bash scripts/setup.sh`，選「覆蓋」更新 `CLAUDE_CREDENTIALS_B64`。
+正常情況下訂閱版的 access token 由 Claude 自己 refresh 寫回 volume，使用者不必處理。
+若要主動操作：
+
+| 情境 | 處理 |
+|------|------|
+| 換 Claude 帳號 | `docker compose exec -it -u node cc-connect claude` → `/login` 走新帳號流程 → `docker compose restart cc-connect` |
+| Refresh token 也失效（罕見，通常是密碼變更或從其他裝置撤銷 session） | 同上：`/login` 重做 |
+| 想看 token 狀態 | `docker compose exec cc-connect cat /home/node/.claude/.credentials.json` |
+| 想完全清掉重來 | `docker compose down` → `docker volume rm <project>_claude-data` → `docker compose up -d` → `/login` |
+| Host `~/.claude` 與 container 不同步 | 預期行為。容器有自己的 volume；想同步只能 `/login` 重做或重 seed `CLAUDE_CREDENTIALS_B64` |
 
 ---
 

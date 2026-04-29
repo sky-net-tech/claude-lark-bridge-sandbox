@@ -58,6 +58,9 @@
 ## 安全紅線
 
 - 機密欄位（`*_API_KEY`、`*_SECRET`、`CLAUDE_CREDENTIALS_B64`、`GIT_TOKEN`）一律走 `.env`，
-  不可寫入 image、不可入 named volume、不可在 log 印出。
+  **不可寫入 image**、**不可在 log 印出**。
+- 例外：Claude 訂閱憑證 `~/.claude/.credentials.json` 必須持久化在 `claude-data`
+  named volume 內（OAuth refresh token 會輪替，無法靠 `.env` 快照維持）。volume 不對外
+  暴露、不出現在 image layer、不寫進 log，但屬於「合法持久化」的祕密儲存點。
 - `scripts/cc-entrypoint.sh` 內的 REDLINE heredoc 是 Claude session 的全域規則，**不得放寬**。
   若要新增規則，加進去；要刪除既有規則，需在 PR 說明風險評估。

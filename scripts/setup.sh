@@ -401,81 +401,85 @@ phase3_prompts() {
 }
 
 # Claude 認證子流程
+#
+# 設計：claude-data volume 才是憑證唯一真相，這裡的 b64 只在「volume 為空」時被
+# entrypoint 一次性 seed 進去，refresh 後的新 token 不會回灌到 .env。
+#
+# 三條路：
+#   1) 自動偵測 host 既有訂閱憑證並 seed（推薦給有跑過 claude login 的工作站）
+#   2) 暫不填，部署完用 docker compose exec /login（headless / 想直接在 container 內登入）
+#   3) ANTHROPIC_API_KEY（不走訂閱）
 prompt_claude_auth() {
     local existing_b64 existing_apikey
     existing_b64=$(get_env_value "$DEFAULTS_FILE" "CLAUDE_CREDENTIALS_B64")
     existing_apikey=$(get_env_value "$DEFAULTS_FILE" "ANTHROPIC_API_KEY")
 
-    # 如果既有檔有值，先問是否沿用
-    if [ -n "$existing_b64" ] && confirm "偵測到既有 CLAUDE_CREDENTIALS_B64，沿用？" "Y"; then
-        V_CLAUDE_CREDENTIALS_B64="$existing_b64"
-        CLAUDE_AUTH_MODE="subscription"
-        return
-    fi
+    # 既有 .env 沿用
     if [ -n "$existing_apikey" ] && confirm "偵測到既有 ANTHROPIC_API_KEY，沿用？" "Y"; then
         V_ANTHROPIC_API_KEY="$existing_apikey"
         CLAUDE_AUTH_MODE="api_key"
         return
     fi
-
-    # 智慧偵測：先檢查檔案，再檢查 macOS Keychain
-    local cred_file="$HOME/.claude/.credentials.json"
-    local found_b64=""
-    local found_source=""
-
-    if [ -f "$cred_file" ]; then
-        found_b64=$(base64_encode_file "$cred_file")
-        found_source="$cred_file"
-    elif [ "$(uname)" = "Darwin" ] && command -v security >/dev/null 2>&1; then
-        # Claude Desktop / Claude Code on macOS 把訂閱憑證存在 Keychain
-        local kc_json
-        kc_json=$(security find-generic-password -s 'Claude Code-credentials' -w 2>/dev/null || true)
-        if [ -n "$kc_json" ] && printf '%s' "$kc_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,dict)' >/dev/null 2>&1; then
-            found_b64=$(printf '%s' "$kc_json" | base64 | tr -d '\n')
-            found_source="macOS Keychain（Claude Code-credentials）"
-        fi
-    fi
-
-    if [ -n "$found_b64" ]; then
-        local preview
-        preview=$(printf '%s' "$found_b64" | cut -c1-12)
-        info "偵測到 Claude 訂閱憑證來源：${found_source}"
-        info "  base64 預覽：${preview}..."
-        if confirm "使用此訂閱憑證？" "Y"; then
-            V_CLAUDE_CREDENTIALS_B64="$found_b64"
+    if [ -n "$existing_b64" ]; then
+        info "偵測到既有 CLAUDE_CREDENTIALS_B64（會在 volume 為空時做一次性 seed）"
+        if confirm "沿用？" "Y"; then
+            V_CLAUDE_CREDENTIALS_B64="$existing_b64"
             CLAUDE_AUTH_MODE="subscription"
             return
         fi
-    else
-        info "未偵測到本機 Claude 訂閱憑證（檢查過 ${cred_file} 與 macOS Keychain）"
-        info "  若你確實有，請先在 host 跑 'claude login'"
     fi
 
-    # 改用 API Key 或手動貼上
-    if confirm "改用 ANTHROPIC_API_KEY？" "Y"; then
-        while :; do
-            local v
-            v=$(prompt_value "ANTHROPIC_API_KEY（sk-ant-...）" "" 1)
-            if printf '%s' "$v" | grep -Eq '^sk-ant-'; then
-                V_ANTHROPIC_API_KEY="$v"
-                CLAUDE_AUTH_MODE="api_key"
-                return
+    info "Claude 認證選項："
+    info "  1) 訂閱版：自動偵測 host 既有憑證並 seed（一次性，之後 refresh 由 volume 自管）"
+    info "  2) 訂閱版：什麼都不填，部署完跑 docker compose exec ... claude → /login"
+    info "  3) API Key（sk-ant-...）"
+    local choice
+    choice=$(prompt_value "請選擇 [1/2/3]" "2")
+
+    case "$choice" in
+        1)
+            local cred_file="$HOME/.claude/.credentials.json"
+            local found_b64="" found_source=""
+            if [ -f "$cred_file" ]; then
+                found_b64=$(base64_encode_file "$cred_file")
+                found_source="$cred_file"
+            elif [ "$(uname)" = "Darwin" ] && command -v security >/dev/null 2>&1; then
+                local kc_json
+                kc_json=$(security find-generic-password -s 'Claude Code-credentials' -w 2>/dev/null || true)
+                if [ -n "$kc_json" ] && printf '%s' "$kc_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,dict)' >/dev/null 2>&1; then
+                    found_b64=$(printf '%s' "$kc_json" | base64 | tr -d '\n')
+                    found_source="macOS Keychain（Claude Code-credentials）"
+                fi
             fi
-            warn "格式錯誤，需以 sk-ant- 開頭"
-        done
-    else
-        # 手動貼上 base64
-        while :; do
-            local v
-            v=$(prompt_value "請貼上 CLAUDE_CREDENTIALS_B64（base64 字串）" "" 1)
-            if [ -n "$v" ] && printf '%s' "$v" | base64_decode >/dev/null 2>&1; then
-                V_CLAUDE_CREDENTIALS_B64="$v"
+            if [ -n "$found_b64" ]; then
+                local preview
+                preview=$(printf '%s' "$found_b64" | cut -c1-12)
+                info "  偵測來源：${found_source}"
+                info "  base64 預覽：${preview}..."
+                V_CLAUDE_CREDENTIALS_B64="$found_b64"
                 CLAUDE_AUTH_MODE="subscription"
-                return
+            else
+                warn "未偵測到 host 訂閱憑證（${cred_file} 與 macOS Keychain 都沒有）"
+                warn "→ 退回選項 2：部署完進 container 跑 /login"
+                CLAUDE_AUTH_MODE="deferred"
             fi
-            warn "不是有效 base64，請重新貼"
-        done
-    fi
+            ;;
+        3)
+            while :; do
+                local v
+                v=$(prompt_value "ANTHROPIC_API_KEY（sk-ant-...）" "" 1)
+                if printf '%s' "$v" | grep -Eq '^sk-ant-'; then
+                    V_ANTHROPIC_API_KEY="$v"
+                    CLAUDE_AUTH_MODE="api_key"
+                    return
+                fi
+                warn "格式錯誤，需以 sk-ant- 開頭"
+            done
+            ;;
+        *)
+            CLAUDE_AUTH_MODE="deferred"
+            ;;
+    esac
 }
 
 # ---------- Phase 4: 寫入 .env ----------
@@ -604,6 +608,8 @@ EOF
             err "Anthropic API key 失敗（HTTP ${ak_status}）"
             fail=1
         fi
+    elif [ "$CLAUDE_AUTH_MODE" = "deferred" ]; then
+        info "Claude 訂閱憑證將在容器啟動後手動 /login 寫入 volume，跳過憑證驗證"
     else
         info "驗證 CLAUDE_CREDENTIALS_B64 解碼後是合法 JSON ..."
         local decoded
@@ -705,8 +711,11 @@ main() {
         V_ANTHROPIC_API_KEY=$(get_env_value .env "ANTHROPIC_API_KEY")
         if [ -n "$V_ANTHROPIC_API_KEY" ]; then
             CLAUDE_AUTH_MODE="api_key"
-        else
+        elif [ -n "$V_CLAUDE_CREDENTIALS_B64" ]; then
             CLAUDE_AUTH_MODE="subscription"
+        else
+            # .env 兩個欄位都空：靠 claude-data volume 內已 /login 過的憑證
+            CLAUDE_AUTH_MODE="deferred"
         fi
     fi
     phase5_verify_apis
@@ -715,6 +724,19 @@ main() {
 
     header "完成"
     ok "服務已啟動。下一步："
+
+    # deferred 模式：檢查 volume 是否已有憑證（之前可能 /login 過）
+    if [ "$CLAUDE_AUTH_MODE" = "deferred" ]; then
+        if docker compose exec -T -u node cc-connect test -f /home/node/.claude/.credentials.json 2>/dev/null; then
+            printf '  • claude-data volume 已有 /login 憑證，bot 可直接使用\n'
+        else
+            printf '  • Claude 訂閱憑證尚未登入，先做這步：\n'
+            printf '      docker compose exec -it -u node cc-connect claude\n'
+            printf '      進 Claude 後輸入 /login，完成後：\n'
+            printf '      docker compose restart cc-connect\n'
+        fi
+    fi
+
     printf '  • 在 Lark 後台「事件訂閱」設定回呼 / 開啟長連線\n'
     printf '  • docker compose logs -f cc-connect   # 看 bot 上線\n'
     printf '  • 在 Lark 群組 @ bot 測試\n'

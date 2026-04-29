@@ -247,7 +247,7 @@ phase3_prompts() {
     gu_default=$(get_env_value "$DEFAULTS_FILE" "GIT_USERNAME")
     [ -z "$gu_default" ] && gu_default="oauth2"
     if [ -n "$V_GIT_TOKEN" ]; then
-        info "GIT_USERNAME 目前：$gu_default（GitHub/GitLab 都吃 oauth2；Bitbucket 用 x-token-auth）"
+        info "GIT_USERNAME 目前：${gu_default}（GitHub/GitLab 都吃 oauth2；Bitbucket 用 x-token-auth）"
         if confirm "使用此值？" "Y"; then
             V_GIT_USERNAME="$gu_default"
         else
@@ -326,7 +326,7 @@ phase3_prompts() {
     local lmp_default
     lmp_default=$(get_env_value "$DEFAULTS_FILE" "LARK_MCP_PORT")
     [ -z "$lmp_default" ] && lmp_default="3000"
-    info "LARK_MCP_PORT 目前：$lmp_default（容器內部監聽埠）"
+    info "LARK_MCP_PORT 目前：${lmp_default}（容器內部監聽埠）"
     if confirm "使用此值？" "Y"; then
         V_LARK_MCP_PORT="$lmp_default"
     else

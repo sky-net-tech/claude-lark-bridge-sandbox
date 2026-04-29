@@ -77,6 +77,6 @@ case "$mode" in
         show_status
         ;;
     *)
-        die "未知模式：$mode（用 cc-connect / hermes / status）"
+        die "未知模式：${mode}（用 cc-connect / hermes / status）"
         ;;
 esac

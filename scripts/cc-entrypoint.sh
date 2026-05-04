@@ -112,6 +112,12 @@ cat << 'REDLINE' | sed "s|__WORKSPACE_DIR__|${WORKSPACE_DIR}|g" > "${CCUSER_HOME
 - 若遇到 401，**先確認** `/home/node/.git-credentials` 或 `/root/.git-credentials` 是否存在且非空，再下結論
 - 不要建議用戶在主機端手動寫入 `/etc/git-credentials`，那個路徑不再使用
 - 不要用 `-c credential.helper=` 清空 helper，除非用戶明確要求
+
+## gh CLI 認證
+
+- `gh` 已安裝，透過 `GH_TOKEN` env var 認證（與 `GIT_TOKEN` 同一組 token）
+- `gh auth status` 可能顯示「not logged in」，但只要 `GH_TOKEN` 有值，`gh issue create` 等指令仍可正常執行
+- 不需要執行 `gh auth login`，不需要手動設定 token
 REDLINE
 
 chown -R node:node "${CCUSER_HOME}/.claude"
@@ -220,5 +226,8 @@ progress_style = "${CC_PROGRESS_STYLE}"
 allow_from    = "${ALLOW_LIST}"
 EOF
 
+# gh CLI 用 GH_TOKEN 認證（不是 GIT_TOKEN），兩者對應同一組 token
+export GH_TOKEN="${GIT_TOKEN:-}"
+
 # Run cc-connect as non-root user (claude refuses --dangerously-skip-permissions as root)
-exec su -s /bin/sh node -c "HOME=${CCUSER_HOME} exec cc-connect --config /tmp/cc-runtime.toml"
+exec su -s /bin/sh node -c "GH_TOKEN=${GH_TOKEN} HOME=${CCUSER_HOME} exec cc-connect --config /tmp/cc-runtime.toml"

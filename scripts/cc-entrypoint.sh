@@ -116,16 +116,12 @@ cat > /tmp/mcp-config.json << EOF
 EOF
 chmod 644 /tmp/mcp-config.json
 
-# Set up system-wide git credential helper for HTTPS URLs.
+# Set up git credential helper for HTTPS URLs.
 #
-# 憑證放 ${CCUSER_HOME}/.git-credentials（不是 /etc）：
-#   1) cc-connect/Claude session 走 node user，需要能讀
-#   2) credential-store 的 approve 會原子重寫該檔；如果放 /etc，root 跑 git pull
-#      觸發 approve 之後檔案會變回 root:root 0600，下次 node 就讀不到
-#   3) credential-store 同時會在同目錄寫 .lock；/etc 不給 node 寫，會噴
-#      "unable to get credential storage lock"
-#
-# 放 node 家目錄 + chown node:node 0600：node 全權讀寫，root 仍可讀（root 例外）。
+# 寫兩份 credentials：
+#   1) node 家目錄（system credential.helper）：Claude session 跑 node 身分時使用
+#   2) root 家目錄（root global gitconfig）：Claude 以 root 身分呼叫 git 時使用
+#      若只寫 node，HOME=/root 的 git push 會 401
 setup_git_credentials() {
     case "$TARGET_REPO" in
         https://*|http://*)
@@ -135,11 +131,19 @@ setup_git_credentials() {
             rest="${rest##*@}"
             host="${rest%%/*}"
             user="${GIT_USERNAME:-oauth2}"
+
+            # node user
             cred_path="${CCUSER_HOME}/.git-credentials"
             printf '%s://%s:%s@%s\n' "$proto" "$user" "$GIT_TOKEN" "$host" > "$cred_path"
             chown node:node "$cred_path"
             chmod 600 "$cred_path"
             git config --system credential.helper "store --file=${cred_path}"
+
+            # root user（global 優先於 system，確保 HOME=/root 時走自己的 credentials）
+            root_cred_path="/root/.git-credentials"
+            printf '%s://%s:%s@%s\n' "$proto" "$user" "$GIT_TOKEN" "$host" > "$root_cred_path"
+            chmod 600 "$root_cred_path"
+            git config --global credential.helper "store --file=${root_cred_path}"
             ;;
         *) ;;
     esac

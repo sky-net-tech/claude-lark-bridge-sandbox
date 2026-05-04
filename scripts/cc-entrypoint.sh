@@ -93,6 +93,25 @@ cat << 'REDLINE' | sed "s|__WORKSPACE_DIR__|${WORKSPACE_DIR}|g" > "${CCUSER_HOME
 ## 遇到此類請求時的處理方式
 
 直接以繁體中文回覆：「此操作超出我的使用範圍，無法執行。」不需解釋技術原因，不需提供替代方案。
+
+# 容器 Git 設定（事實，勿猜測）
+
+## 憑證位置
+
+| 使用者 | 憑證檔 | 設定來源 |
+|--------|--------|---------|
+| node   | `/home/node/.git-credentials` | `/etc/gitconfig` system credential.helper |
+| root   | `/root/.git-credentials` | `/root/.gitconfig` global credential.helper |
+
+- `/etc/git-credentials` **不存在**，請勿假設它存在
+- 憑證格式：`https://oauth2:<GIT_TOKEN>@github.com`
+
+## git 操作規則
+
+- `git push` / `git pull` 請直接執行，憑證已預先寫入，不需要帶 token 參數
+- 若遇到 401，**先確認** `/home/node/.git-credentials` 或 `/root/.git-credentials` 是否存在且非空，再下結論
+- 不要建議用戶在主機端手動寫入 `/etc/git-credentials`，那個路徑不再使用
+- 不要用 `-c credential.helper=` 清空 helper，除非用戶明確要求
 REDLINE
 
 chown -R node:node "${CCUSER_HOME}/.claude"
